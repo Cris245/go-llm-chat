@@ -137,15 +137,3 @@ internal/
 Dockerfile           # Builds the Go binary for prod
 Docker-compose.yml   # Mongo + server services
 ```
-
----
-
-## Roadmap
-
-* Better NLP for city/date extraction (use spaCy or regexes).
-* Real-time pricing pulled from external API instead of static seed.
-* Docker Compose health-check & hot reload for dev.
-
----
-
-Feel free to open issues or PRs! 🚀
