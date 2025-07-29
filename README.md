@@ -17,8 +17,7 @@ graph TD
         A[Browser / curl]
     end
 
-    subgraph Server (Go)
-        direction TB
+    subgraph Server
         H((/api)) -->|SSE| A
         H[HTTP Handler]
         H --> O[Orchestrator]
@@ -28,9 +27,10 @@ graph TD
         O -->|query| DB[(MongoDB flights)]
     end
 
-    subgraph Docker Compose
+    subgraph Docker
         DB ---|network| Server
-    end"```
+    end
+```
 
 * **LLM 1** – concise, formal replies (or *list of flights* when the question is about flights).
 * **LLM 2** – verbose, friendly replies (or *duration & cost* when the question is about flights).
