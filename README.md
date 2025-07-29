@@ -77,7 +77,7 @@ The LLMs maintain the original language in their responses, providing a seamless
 
 ```bash
 # 1. Clone the repo
-$ git clone https://github.com/<you>/go-llm-chat.git
+$ git clone https://github.com/Cris245/go-llm-chat.git
 $ cd go-llm-chat
 
 # 2. Set your OpenAI API key (choose one method):
