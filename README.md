@@ -1,11 +1,11 @@
 # Go LLM Chat – Multi-LLM Orchestrator Demo
 
-This project is a proof-of-concept chat server written in Go. It shows how to:
+This project demonstrates a multi-LLM orchestration system written in Go. It shows how to:
 
 1. Orchestrate multiple LLMs (OpenAI GPT-4o-mini models) with different prompts.
 2. Stream answers to the caller using Server-Sent Events (SSE).
 3. Enrich answers with domain data (a MongoDB collection of fictional flight data).
-4. Run everything locally with **Docker Compose**.
+4. Run everything locally with **Docker Compose**
 
 ---
 
@@ -32,11 +32,11 @@ graph TD
     end
 ```
 
-* **LLM 1** – concise, formal replies (or *list of flights* when the question is about flights).
-* **LLM 2** – verbose, friendly replies (or *duration & cost* when the question is about flights).
-* **LLM 3** – intelligent aggregation layer that combines LLM1 and LLM2 responses.
+* **LLM 1** – concise, formal replies (or list of flights when the question is about flights).
+* **LLM 2** – verbose, friendly replies (or duration & cost when the question is about flights).
+* **LLM 3** – aggregation layer that combines LLM1 and LLM2 responses.
 
-When the user's question mentions *flights* (in EN or ES) the orchestrator:
+When the user's question mentions *flights* (in English or Spanish) the orchestrator:
 
 1. Extracts **origin** / **destination** city names using a simple synonym map.
 2. Queries MongoDB for matching flights (case-insensitive, supports wildcard searches).
@@ -44,7 +44,7 @@ When the user's question mentions *flights* (in EN or ES) the orchestrator:
 4. **LLM3 aggregates** both responses into a unified, well-formatted answer.
 5. Streams back the final aggregated response via SSE.
 
-For non-flight questions, LLM1/LLM2 are given the user's question with their respective style prompts, and **LLM3 intelligently combines** the formal and friendly perspectives into one balanced response.
+For non-flight questions, LLM1/LLM2 are given the user's question with their respective style prompts, and **LLM3 combines** the formal and friendly perspectives into one balanced response.
 
 ---
 
@@ -124,6 +124,54 @@ The `-N` flag keeps the connection open so you see the `Status` events followed 
 
 ---
 
+## Load Testing
+
+The project includes a load testing script to validate concurrent request handling:
+
+```bash
+# Test 5 simultaneous requests
+./scripts/load_test.sh 5
+
+# Test 10 simultaneous requests  
+./scripts/load_test.sh 10
+```
+
+The script sends multiple concurrent requests and validates that:
+- All requests receive responses
+- No requests are lost or dropped
+- Server maintains performance under load
+- SSE streams work correctly with multiple clients
+
+---
+
+## Challenges Faced & Solutions
+
+### 1. **Multi-LLM Orchestration Complexity**
+**Challenge**: Coordinating three LLMs with different roles while maintaining response quality.
+**Solution**: Implemented parallel processing with `sync.WaitGroup` and channels, ensuring LLM1 and LLM2 run concurrently, then LLM3 aggregates their results.
+
+### 2. **Enhanced NLP for Flight Queries**
+**Challenge**: Extracting flight parameters (cities, dates, prices) from natural language in multiple languages.
+**Solution**: Built comprehensive regex patterns and city synonym maps supporting airport codes (JFK → New York), multi-language variations (Londres → London), and price constraints.
+
+### 3. **Real-time Streaming with SSE**
+**Challenge**: Providing live status updates during multi-step LLM processing.
+**Solution**: Implemented Server-Sent Events with proper event channels, allowing clients to see real-time progress through each LLM invocation.
+
+### 4. **Concurrent Request Handling**
+**Challenge**: Ensuring the system can handle multiple simultaneous users without losing requests or mixing responses.
+**Solution**: Used Go's goroutines and proper channel management to handle concurrent requests independently, with each request getting its own SSE stream.
+
+### 5. **MongoDB Integration & Data Consistency**
+**Challenge**: Managing flight data with upsert operations and ensuring data consistency across restarts.
+**Solution**: Implemented upsert-based seeding that prevents duplicates while ensuring fresh data on each startup.
+
+### 6. **Error Handling & Resilience**
+**Challenge**: Building a robust system that gracefully handles LLM failures, network issues, and partial responses.
+**Solution**: Implemented fallback mechanisms where if LLM3 aggregation fails, the system combines LLM1 and LLM2 responses directly.
+
+---
+
 ## Project Layout
 
 ```
@@ -134,6 +182,8 @@ internal/
   llmclient/         # Thin wrapper around OpenAI ChatCompletion
   orchestrator/      # Core logic (detect flights, prompt LLMs, merge)
   sse/               # Minimal SSE helper
+scripts/
+  load_test.sh       # Concurrent request testing script
 Dockerfile           # Builds the Go binary for prod
 Docker-compose.yml   # Mongo + server services
 ```

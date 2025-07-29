@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/Cris245/go-llm-chat/internal/db"           // Our database package
-	"github.com/Cris245/go-llm-chat/internal/llmclient"    // Our LLM client package
-	"github.com/Cris245/go-llm-chat/internal/orchestrator" // Our Orchestrator package
-	"github.com/Cris245/go-llm-chat/internal/sse"          // Our SSE package
+	"github.com/Cris245/go-llm-chat/internal/db"           // Database package
+	"github.com/Cris245/go-llm-chat/internal/llmclient"    // LLM client package
+	"github.com/Cris245/go-llm-chat/internal/orchestrator" // Orchestrator package
+	"github.com/Cris245/go-llm-chat/internal/sse"          // SSE package
 )
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 	}
 	defer dbClient.Disconnect(context.Background()) // Ensure MongoDB connection is closed when main exits.
 
-	// Poblar la base de datos con vuelos de ejemplo si está vacía
+	// Populate the database with sample flights if empty
 	if err := dbClient.SeedFlights(ctx); err != nil {
 		log.Fatalf("Error seeding flights: %v", err)
 	}
@@ -52,7 +52,7 @@ func main() {
 	// Initialize orchestrator with all three LLM clients
 	orch := orchestrator.NewOrchestrator(llm1Client, llm2Client, llm3Client, dbClient)
 
-	// Handle HTTP POST requests to the "/api" endpoint.[3]
+	// Handle HTTP POST requests to the "/api" endpoint.
 	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

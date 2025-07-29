@@ -11,7 +11,7 @@ import (
 )
 
 // Client defines the interface for database operations.
-// Using an interface allows us to easily swap between a real MongoDB client and a mock client for testing.
+// Using an interface allows easy swapping between a real MongoDB client and a mock client for testing.
 type Client interface {
 	Connect(ctx context.Context, uri string) error
 	Disconnect(ctx context.Context) error
@@ -22,7 +22,7 @@ type Client interface {
 // MongoDBClient implements the Client interface for MongoDB.
 type MongoDBClient struct {
 	client     *mongo.Client     // The underlying MongoDB client connection
-	collection *mongo.Collection // The specific MongoDB collection we will work with (e.g., "flights")
+	collection *mongo.Collection // The specific MongoDB collection to work with (e.g., "flights")
 }
 
 // NewClient creates a new MongoDBClient instance and establishes a connection to the database.
@@ -47,7 +47,7 @@ func NewClient(ctx context.Context, uri string) (*MongoDBClient, error) {
 	}
 	log.Println("Successfully connected to MongoDB!")
 
-	// Select the database ("flightdb") and collection ("flights") we will use.
+	// Select the database ("flightdb") and collection ("flights") to use.
 	collection := client.Database("flightdb").Collection("flights")
 
 	return &MongoDBClient{
@@ -56,9 +56,7 @@ func NewClient(ctx context.Context, uri string) (*MongoDBClient, error) {
 	}, nil
 }
 
-// Connect is part of the Client interface, but for MongoDBClient, the connection
-// is established during NewClient. This method can be a no-op or return an error
-// if called after NewClient.
+// Connect is part of the Client interface. For MongoDBClient, connection is established during NewClient.
 func (m *MongoDBClient) Connect(ctx context.Context, uri string) error {
 	// For MongoDBClient, connection is handled by NewClient.
 	return nil
@@ -98,11 +96,11 @@ func (m *MongoDBClient) InsertFlights(ctx context.Context, flights []Flight) err
 // This function is called once on application startup to populate the database.
 func SeedFlightData(ctx context.Context, client Client) error {
 	// Check if the collection is empty to avoid re-inserting data on every restart.
-	// We cast to *MongoDBClient to access the underlying collection for CountDocuments.
+	// Cast to *MongoDBClient to access the underlying collection for CountDocuments.
 	mongoClient, ok := client.(*MongoDBClient)
 	if !ok {
-		// In a real app, you might want to handle this more gracefully.
-		// For this example, we assume the client is always a *MongoDBClient.
+		// In a real app, this should be handled more gracefully.
+		// For this example, the client is assumed to always be a *MongoDBClient.
 		return fmt.Errorf("client is not a *MongoDBClient")
 	}
 	count, err := mongoClient.collection.CountDocuments(ctx, bson.M{})

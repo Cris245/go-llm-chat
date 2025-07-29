@@ -1,8 +1,8 @@
 package sse
 
 import (
-	"fmt"      
-	"net/http" 
+	"fmt"
+	"net/http"
 )
 
 // Event represents a generic Server-Sent Event (SSE).
@@ -20,7 +20,7 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
-// This function is called by the Go HTTP server when a request comes to our SSE path.
+// This function is called by the Go HTTP server when a request comes to the SSE path.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, eventChan <-chan Event) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

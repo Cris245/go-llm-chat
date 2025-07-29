@@ -27,6 +27,7 @@ type OpenAIClient struct {
 type ChatCompletionRequest struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream,omitempty"`
 }
 
 type Message struct {
@@ -42,6 +43,16 @@ type Choice struct {
 	Message Message `json:"message"`
 }
 
+type StreamChoice struct {
+	Delta  Message `json:"delta"`
+	Index  int     `json:"index"`
+	Finish string  `json:"finish_reason,omitempty"`
+}
+
+type StreamResponse struct {
+	Choices []StreamChoice `json:"choices"`
+}
+
 // NewOpenAIClient creates a new instance of OpenAIClient.
 func NewOpenAIClient(model string) *OpenAIClient {
 	return &OpenAIClient{
@@ -53,8 +64,7 @@ func NewOpenAIClient(model string) *OpenAIClient {
 
 // StreamChatCompletion sends a prompt to the LLM and returns a channel for streaming the response.
 func (c *OpenAIClient) StreamChatCompletion(ctx context.Context, prompt string) (<-chan string, error) {
-	// For now, use the non-streaming version and return it as a stream
-	// We can implement actual streaming later
+	// Use the non-streaming version and return it as a stream
 	result, err := c.ChatCompletion(ctx, prompt)
 	if err != nil {
 		return nil, err
