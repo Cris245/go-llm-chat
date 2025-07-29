@@ -16,7 +16,7 @@ type Client interface {
 	Connect(ctx context.Context, uri string) error
 	Disconnect(ctx context.Context) error
 	InsertFlights(ctx context.Context, flights []Flight) error // New method for inserting flights
-	SearchFlights(ctx context.Context, origin, destination string) ([]Flight, error)
+	SearchFlights(ctx context.Context, origin, destination string, maxPrice float64) ([]Flight, error)
 }
 
 // MongoDBClient implements the Client interface for MongoDB.
@@ -363,7 +363,7 @@ func (m *MongoDBClient) SeedFlights(ctx context.Context) error {
 	return nil
 }
 
-func (m *MongoDBClient) SearchFlights(ctx context.Context, origin, destination string) ([]Flight, error) {
+func (m *MongoDBClient) SearchFlights(ctx context.Context, origin, destination string, maxPrice float64) ([]Flight, error) {
 	// Build MongoDB filter dynamically based on provided parameters.
 	filter := bson.M{}
 	if origin != "" {
@@ -379,6 +379,10 @@ func (m *MongoDBClient) SearchFlights(ctx context.Context, origin, destination s
 		} else {
 			filter["destination"] = bson.M{"$regex": destination, "$options": "i"}
 		}
+	}
+	// Add price filter if maxPrice is specified (> 0)
+	if maxPrice > 0 {
+		filter["price"] = bson.M{"$lte": maxPrice}
 	}
 	cur, err := m.collection.Find(ctx, filter)
 	if err != nil {

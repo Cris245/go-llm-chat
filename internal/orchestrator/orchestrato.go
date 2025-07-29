@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -10,6 +12,22 @@ import (
 	"github.com/Cris245/go-llm-chat/internal/llmclient"
 	"github.com/Cris245/go-llm-chat/internal/sse"
 )
+
+// detectLanguage determines if the message is in Spanish or English
+func detectLanguage(message string) string {
+	lower := strings.ToLower(message)
+
+	// Spanish indicators
+	spanishWords := []string{"hola", "como", "estas", "que", "hay", "vuelos", "vuelo", "desde", "hacia", "menos", "bajo", "inferior", "cuanto", "cuesta", "precio", "costo", "duracion", "tiempo"}
+
+	for _, word := range spanishWords {
+		if strings.Contains(lower, word) {
+			return "Spanish"
+		}
+	}
+
+	return "English"
+}
 
 // Orchestrator coordinates interactions with the LLMs and the database.
 type Orchestrator struct {
@@ -56,6 +74,7 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 		}
 
 		var origin, destination string
+		var maxPrice float64
 
 		lower := strings.ToLower(userMessage)
 		for syn, canon := range synonyms {
@@ -77,8 +96,33 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 			}
 		}
 
+		// Extract price constraints (e.g., "under 500", "less than 300", "below 1000")
+		pricePatterns := []string{
+			"under (\\d+)",
+			"less than (\\d+)",
+			"below (\\d+)",
+			"under \\$(\\d+)",
+			"less than \\$(\\d+)",
+			"below \\$(\\d+)",
+			"menos de (\\d+)",
+			"bajo (\\d+)",
+			"inferior a (\\d+)",
+			"menos de \\$(\\d+)",
+			"bajo \\$(\\d+)",
+			"inferior a \\$(\\d+)",
+		}
+
+		for _, pattern := range pricePatterns {
+			if matches := regexp.MustCompile(pattern).FindStringSubmatch(lower); len(matches) > 1 {
+				if price, err := strconv.ParseFloat(matches[1], 64); err == nil {
+					maxPrice = price
+					break
+				}
+			}
+		}
+
 		// If both origin and destination are empty, search without filters (all flights).
-		flights, err := o.dbClient.SearchFlights(ctx, origin, destination)
+		flights, err := o.dbClient.SearchFlights(ctx, origin, destination, maxPrice)
 		if err != nil || len(flights) == 0 {
 			eventChan <- sse.Event{Type: "Message", Data: "No flights found for your query."}
 			return
@@ -88,10 +132,18 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 			flightsInfo += fmt.Sprintf("Flight %s: %s -> %s, departure %s, arrival %s, price $%.2f\n",
 				f.FlightNumber, f.Origin, f.Destination, f.DepartureTime, f.ArrivalTime, f.Price)
 		}
-		// LLM1: List the available flights
-		promptLLM1 := "List the available flights from the following data. Only list the flights, do not provide extra information.\n" + flightsInfo
-		// LLM2: For each flight, say how long it takes and how much it costs
-		promptLLM2 := "For each flight in the following data, say how long the flight takes and how much it costs.\n" + flightsInfo
+
+		// Detect language and create language-specific prompts
+		language := detectLanguage(userMessage)
+		var promptLLM1, promptLLM2 string
+
+		if language == "Spanish" {
+			promptLLM1 = "Lista los vuelos disponibles de los siguientes datos. Solo lista los vuelos, no proporciones información adicional. Responde en español.\n" + flightsInfo
+			promptLLM2 = "Para cada vuelo en los siguientes datos, di cuánto tiempo toma y cuánto cuesta. Responde en español.\n" + flightsInfo
+		} else {
+			promptLLM1 = "List the available flights from the following data. Only list the flights, do not provide extra information.\n" + flightsInfo
+			promptLLM2 = "For each flight in the following data, say how long the flight takes and how much it costs.\n" + flightsInfo
+		}
 
 		// Channels to collect responses
 		llm1RespChan := make(chan string, 1)
@@ -137,7 +189,26 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 		// Now use LLM3 to aggregate the responses
 		eventChan <- sse.Event{Type: "Status", Data: "Invoking LLM 3 (aggregation)"}
 
-		aggregationPrompt := fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses about flights into one coherent, well-formatted answer:
+		var aggregationPrompt string
+		if language == "Spanish" {
+			aggregationPrompt = fmt.Sprintf(`Eres un agregador inteligente. Combina estas dos respuestas sobre vuelos en una respuesta coherente y bien formateada:
+
+Respuesta de LLM1 (lista de vuelos):
+%s
+
+Respuesta de LLM2 (duración y costo):
+%s
+
+Por favor crea una respuesta unificada que:
+1. Liste todos los vuelos disponibles claramente
+2. Incluya duración y costo para cada vuelo
+3. Use formato limpio sin markdown excesivo (evita ** para énfasis)
+4. Elimine cualquier redundancia entre las dos respuestas
+5. Mantenga toda la información importante de ambas respuestas
+6. Use formato simple como "Vuelo FL101:" en lugar de "**Vuelo FL101:**"
+7. Responde completamente en español`, llm1Resp, llm2Resp)
+		} else {
+			aggregationPrompt = fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses about flights into one coherent, well-formatted answer:
 
 LLM1 Response (flight list):
 %s
@@ -152,6 +223,7 @@ Please create a unified response that:
 4. Removes any redundancy between the two responses
 5. Maintains all the important information from both responses
 6. Uses simple formatting like "Flight FL101:" instead of "**Flight FL101:**"`, llm1Resp, llm2Resp)
+		}
 
 		llm3Resp, err := o.llm3Client.ChatCompletion(ctx, aggregationPrompt)
 		if err != nil {
@@ -165,9 +237,17 @@ Please create a unified response that:
 		}
 		return
 	}
-	// Prepare prompts for LLM1 and LLM2
-	promptLLM1 := "Please answer the following question in a short, formal, and concise manner: " + userMessage
-	promptLLM2 := "Please answer the following question in a friendly, verbose, and opinionated way, providing more information and your thoughts: " + userMessage
+	// Detect language and prepare language-specific prompts
+	language := detectLanguage(userMessage)
+	var promptLLM1, promptLLM2 string
+
+	if language == "Spanish" {
+		promptLLM1 = "Por favor responde la siguiente pregunta de manera corta, formal y concisa: " + userMessage
+		promptLLM2 = "Por favor responde la siguiente pregunta de manera amigable, verbosa y con opiniones, proporcionando más información y tus pensamientos: " + userMessage
+	} else {
+		promptLLM1 = "Please answer the following question in a short, formal, and concise manner: " + userMessage
+		promptLLM2 = "Please answer the following question in a friendly, verbose, and opinionated way, providing more information and your thoughts: " + userMessage
+	}
 
 	// Channels to collect responses
 	llm1RespChan := make(chan string, 1)
@@ -213,7 +293,26 @@ Please create a unified response that:
 	// Use LLM3 to aggregate the two different style responses
 	eventChan <- sse.Event{Type: "Status", Data: "Invoking LLM 3 (aggregation)"}
 
-	aggregationPrompt := fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses to the same question into one coherent, well-balanced answer:
+	var aggregationPrompt string
+	if language == "Spanish" {
+		aggregationPrompt = fmt.Sprintf(`Eres un agregador inteligente. Combina estas dos respuestas a la misma pregunta en una respuesta coherente y bien equilibrada:
+
+Respuesta de LLM1 (formal y concisa):
+%s
+
+Respuesta de LLM2 (amigable y verbosa):
+%s
+
+Al inicio de tu respuesta, menciona brevemente que LLM1 es corto/formal/conciso y LLM2 es amigable/verboso/con opiniones.
+
+Por favor crea una respuesta unificada que:
+1. Combine lo mejor de ambos estilos
+2. Esté bien formateada y sea fácil de leer
+3. Elimine redundancia manteniendo toda la información importante
+4. Mantenga un tono equilibrado entre formal y amigable
+5. Responda completamente en español`, llm1Resp, llm2Resp)
+	} else {
+		aggregationPrompt = fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses to the same question into one coherent, well-balanced answer:
 
 LLM1 Response (formal and concise):
 %s
@@ -228,6 +327,7 @@ Please create a unified response that:
 2. Is well-formatted and easy to read
 3. Removes redundancy while keeping all important information
 4. Maintains a balanced tone between formal and friendly`, llm1Resp, llm2Resp)
+	}
 
 	llm3Resp, err := o.llm3Client.ChatCompletion(ctx, aggregationPrompt)
 	if err != nil {
@@ -291,7 +391,7 @@ func (o *Orchestrator) ProcessMessageStream(ctx context.Context, userMessage str
 		}
 
 		// If both origin and destination are empty, search without filters (all flights).
-		flights, err := o.dbClient.SearchFlights(ctx, origin, destination)
+		flights, err := o.dbClient.SearchFlights(ctx, origin, destination, 0)
 		if err != nil || len(flights) == 0 {
 			eventChan <- sse.Event{Type: "Message", Data: "No flights found for your query."}
 			return
@@ -381,9 +481,17 @@ Please create a unified response that:
 		}
 		return
 	}
-	// Prepare prompts for LLM1 and LLM2
-	promptLLM1 := "Please answer the following question in a short, formal, and concise manner: " + userMessage
-	promptLLM2 := "Please answer the following question in a friendly, verbose, and opinionated way, providing more information and your thoughts: " + userMessage
+	// Detect language and prepare language-specific prompts
+	language := detectLanguage(userMessage)
+	var promptLLM1, promptLLM2 string
+
+	if language == "Spanish" {
+		promptLLM1 = "Por favor responde la siguiente pregunta de manera corta, formal y concisa: " + userMessage
+		promptLLM2 = "Por favor responde la siguiente pregunta de manera amigable, verbosa y con opiniones, proporcionando más información y tus pensamientos: " + userMessage
+	} else {
+		promptLLM1 = "Please answer the following question in a short, formal, and concise manner: " + userMessage
+		promptLLM2 = "Please answer the following question in a friendly, verbose, and opinionated way, providing more information and your thoughts: " + userMessage
+	}
 
 	// Channels to collect responses
 	llm1RespChan := make(chan string, 1)
@@ -429,7 +537,26 @@ Please create a unified response that:
 	// Use LLM3 to aggregate the two different style responses with streaming
 	eventChan <- sse.Event{Type: "Status", Data: "Invoking LLM 3 (aggregation)"}
 
-	aggregationPrompt := fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses to the same question into one coherent, well-balanced answer:
+	var aggregationPrompt string
+	if language == "Spanish" {
+		aggregationPrompt = fmt.Sprintf(`Eres un agregador inteligente. Combina estas dos respuestas a la misma pregunta en una respuesta coherente y bien equilibrada:
+
+Respuesta de LLM1 (formal y concisa):
+%s
+
+Respuesta de LLM2 (amigable y verbosa):
+%s
+
+Al inicio de tu respuesta, menciona brevemente que LLM1 es corto/formal/conciso y LLM2 es amigable/verboso/con opiniones.
+
+Por favor crea una respuesta unificada que:
+1. Combine lo mejor de ambos estilos
+2. Esté bien formateada y sea fácil de leer
+3. Elimine redundancia manteniendo toda la información importante
+4. Mantenga un tono equilibrado entre formal y amigable
+5. Responda completamente en español`, llm1Resp, llm2Resp)
+	} else {
+		aggregationPrompt = fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses to the same question into one coherent, well-balanced answer:
 
 LLM1 Response (formal and concise):
 %s
@@ -444,6 +571,7 @@ Please create a unified response that:
 2. Is well-formatted and easy to read
 3. Removes redundancy while keeping all important information
 4. Maintains a balanced tone between formal and friendly`, llm1Resp, llm2Resp)
+	}
 
 	// Use streaming for the final response
 	streamChan, err := o.llm3Client.StreamChatCompletion(ctx, aggregationPrompt)

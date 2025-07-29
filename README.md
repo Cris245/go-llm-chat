@@ -68,17 +68,24 @@ The LLMs maintain the original language in their responses, providing a seamless
 
 * Go 1.22+
 * Docker & Docker Compose (optional but easiest)
-* An **OpenAI API key** (set `OPENAI_API_KEY`).
+* **OpenAI API key** (required - set `OPENAI_API_KEY` environment variable)
+* **Internet connection** (to access OpenAI API)
 
 ### Clone & run with Docker Compose (recommended)
+
+**⚠️ Important**: You need a valid OpenAI API key to run this application.
 
 ```bash
 # 1. Clone the repo
 $ git clone https://github.com/<you>/go-llm-chat.git
 $ cd go-llm-chat
 
-# 2. Export your OpenAI key (or use a .env file)
+# 2. Set your OpenAI API key (choose one method):
+# Option A: Export environment variable
 $ export OPENAI_API_KEY="sk-…"
+
+# Option B: Create .env file
+$ echo "OPENAI_API_KEY=sk-…" > .env
 
 # 3. Start everything
 $ docker-compose up --build
@@ -135,6 +142,27 @@ curl -N -X POST -d "Explain quantum teleportation in simple terms" http://localh
 ```
 
 The `-N` flag keeps the connection open so you see the `Status` events followed by the `Message`.
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**"Incorrect API key provided" error:**
+- Ensure your OpenAI API key is valid and has sufficient credits
+- Check that the key is properly set in your environment or `.env` file
+- Verify the key doesn't have extra characters or line breaks
+
+**"No flights found" for valid queries:**
+- The system includes price filtering - try removing price constraints
+- Check that city names are spelled correctly
+- Supported cities: Madrid, Paris, London, Barcelona, Valencia, Seville, Tokyo, New York, Los Angeles, Berlin, Rome
+
+**Connection refused on localhost:8080:**
+- Ensure Docker containers are running: `docker-compose ps`
+- Check container logs: `docker-compose logs app`
+- Verify port 8080 is not used by another application
 
 ---
 
