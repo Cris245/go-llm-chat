@@ -2,7 +2,7 @@
 
 This project is a proof-of-concept chat server written in Go. It shows how to:
 
-1. Orchestrate multiple LLMs (OpenAI ChatGPT models) with different prompts.
+1. Orchestrate multiple LLMs (OpenAI GPT-4o-mini models) with different prompts.
 2. Stream answers to the caller using Server-Sent Events (SSE).
 3. Enrich answers with domain data (a MongoDB collection of fictional flight data).
 4. Run everything locally with **Docker Compose**.
@@ -23,7 +23,7 @@ graph TD
         H --> O[Orchestrator]
         O -->|prompt| L1[(LLM 1)]
         O -->|prompt| L2[(LLM 2)]
-        O -->|future| L3[(LLM 3 – coming soon)]
+        O -->|aggregate| L3[(LLM 3)]
         O -->|query| DB[(MongoDB flights)]
     end
 
@@ -34,16 +34,17 @@ graph TD
 
 * **LLM 1** – concise, formal replies (or *list of flights* when the question is about flights).
 * **LLM 2** – verbose, friendly replies (or *duration & cost* when the question is about flights).
-* **LLM 3** – aggregation layer (not implemented yet).
+* **LLM 3** – intelligent aggregation layer that combines LLM1 and LLM2 responses.
 
-When the user’s question mentions *flights* (in EN or ES) the orchestrator:
+When the user's question mentions *flights* (in EN or ES) the orchestrator:
 
 1. Extracts **origin** / **destination** city names using a simple synonym map.
 2. Queries MongoDB for matching flights (case-insensitive, supports wildcard searches).
 3. Feeds the flight list to both LLMs with different prompts.
-4. Streams back a combined answer via SSE.
+4. **LLM3 aggregates** both responses into a unified, well-formatted answer.
+5. Streams back the final aggregated response via SSE.
 
-For non-flight questions, LLM1/LLM2 are just given the user’s question with their respective style prompts.
+For non-flight questions, LLM1/LLM2 are given the user's question with their respective style prompts, and **LLM3 intelligently combines** the formal and friendly perspectives into one balanced response.
 
 ---
 
@@ -74,7 +75,7 @@ Docker Compose spins up:
 * **MongoDB** on `mongodb://mongo:27017` (aliased as `MONGO_URI`).
 * **Go server** on `http://localhost:8080`.
 
-On first start the server **seeds** the `flightdb.flights` collection with a set of 20 sample flights (Madrid ↔ Paris, London ↔ Berlin, Tokyo → LA, …). Seeding is done via **upsert**, so re-starts won’t duplicate data.
+On first start the server **seeds** the `flightdb.flights` collection with a set of 20 sample flights (Madrid ↔ Paris, London ↔ Berlin, Tokyo → LA, …). Seeding is done via **upsert**, so re-starts won't duplicate data.
 
 ### Run natively (Go only)
 
@@ -100,7 +101,7 @@ On first start the server **seeds** the `flightdb.flights` collection with a set
 | Event `Type` | Meaning                               | Example `Data`                   |
 |--------------|---------------------------------------|----------------------------------|
 | `Status`     | Internal status update (invoking LLM) | `Invoking LLM 1`                 |
-| `Message`    | Final combined answer                 | See example below                |
+| `Message`    | Final aggregated answer               | See example below                |
 
 ### Curl Examples
 
@@ -136,3 +137,15 @@ internal/
 Dockerfile           # Builds the Go binary for prod
 Docker-compose.yml   # Mongo + server services
 ```
+
+---
+
+## Roadmap
+
+* Better NLP for city/date extraction (use spaCy or regexes).
+* Real-time pricing pulled from external API instead of static seed.
+* Docker Compose health-check & hot reload for dev.
+
+---
+
+Feel free to open issues or PRs! 🚀

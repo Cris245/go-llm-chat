@@ -1,17 +1,17 @@
 package main
 
 import (
-	"context"  
-	"io"       
-	"log"      
-	"net/http" 
-	"os"       
+	"context"
+	"io"
+	"log"
+	"net/http"
+	"os"
 	"time"
 
-	"github.com/Cris245/go-llm-chat/internal/db" // Our database package
-	"github.com/Cris245/go-llm-chat/internal/llmclient" // Our LLM client package
+	"github.com/Cris245/go-llm-chat/internal/db"           // Our database package
+	"github.com/Cris245/go-llm-chat/internal/llmclient"    // Our LLM client package
 	"github.com/Cris245/go-llm-chat/internal/orchestrator" // Our Orchestrator package
-	"github.com/Cris245/go-llm-chat/internal/sse"     // Our SSE package
+	"github.com/Cris245/go-llm-chat/internal/sse"          // Our SSE package
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 
 	// Initialize MongoDB client and connect to the database.
 	dbClient, err := db.NewClient(ctx, mongoURI)
-	if err!= nil {
+	if err != nil {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 	defer dbClient.Disconnect(context.Background()) // Ensure MongoDB connection is closed when main exits.
@@ -45,22 +45,23 @@ func main() {
 	log.Printf("Is OPENAI_API_KEY present?: %v", os.Getenv("OPENAI_API_KEY") != "")
 
 	// Initialize LLM clients
-	llm1Client := llmclient.NewOpenAIClient("gpt-3.5-turbo")
-	llm2Client := llmclient.NewOpenAIClient("gpt-3.5-turbo")
+	llm1Client := llmclient.NewOpenAIClient("gpt-4o-mini")
+	llm2Client := llmclient.NewOpenAIClient("gpt-4o-mini")
+	llm3Client := llmclient.NewOpenAIClient("gpt-4o-mini")
 
-	// Initialize orchestrator with both LLM clients (LLM3 is nil for now)
-	orch := orchestrator.NewOrchestrator(llm1Client, llm2Client, nil, dbClient)
+	// Initialize orchestrator with all three LLM clients
+	orch := orchestrator.NewOrchestrator(llm1Client, llm2Client, llm3Client, dbClient)
 
 	// Handle HTTP POST requests to the "/api" endpoint.[3]
 	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method!= http.MethodPost {
+		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		// Read the user's message from the request body.
 		buf, err := io.ReadAll(r.Body)
-		if err!= nil {
+		if err != nil {
 			http.Error(w, "Error reading request body", http.StatusInternalServerError)
 			return
 		}
@@ -79,12 +80,12 @@ func main() {
 		// This allows the HTTP handler to immediately set up the SSE connection
 		// while the LLM processing happens concurrently.
 		go func() {
-			defer close(eventChan) // Ensure the event channel is closed when processing is done.
+			defer close(eventChan)                                   // Ensure the event channel is closed when processing is done.
 			orch.ProcessMessage(r.Context(), userMessage, eventChan) // Pass the context for cancellation.
 		}()
 
 		// Serve the SSE events to the client using the sseHandler and the eventChan.
-		sseHandler.ServeHTTP(w, r, eventChan)	
+		sseHandler.ServeHTTP(w, r, eventChan)
 	})
 
 	// Start the HTTP server on port 8080.

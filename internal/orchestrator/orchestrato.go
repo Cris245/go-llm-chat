@@ -134,9 +134,34 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 		llm1Resp := <-llm1RespChan
 		llm2Resp := <-llm2RespChan
 
-		// Send both responses as a single message event (with attribution)
-		combined := "LLM1 (flights list):\n" + llm1Resp + "\n\nLLM2 (duration and cost):\n" + llm2Resp
-		eventChan <- sse.Event{Type: "Message", Data: combined}
+		// Now use LLM3 to aggregate the responses
+		eventChan <- sse.Event{Type: "Status", Data: "Invoking LLM 3 (aggregation)"}
+
+		aggregationPrompt := fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses about flights into one coherent, well-formatted answer:
+
+LLM1 Response (flight list):
+%s
+
+LLM2 Response (duration and cost):
+%s
+
+Please create a unified response that:
+1. Lists all available flights clearly
+2. Includes duration and cost for each flight
+3. Is well-formatted and easy to read
+4. Removes any redundancy between the two responses
+5. Maintains all the important information from both responses`, llm1Resp, llm2Resp)
+
+		llm3Resp, err := o.llm3Client.ChatCompletion(ctx, aggregationPrompt)
+		if err != nil {
+			eventChan <- sse.Event{Type: "Status", Data: "LLM3 aggregation failed"}
+			// Fallback to combined response
+			combined := "LLM1 (flights list):\n" + llm1Resp + "\n\nLLM2 (duration and cost):\n" + llm2Resp
+			eventChan <- sse.Event{Type: "Message", Data: combined}
+		} else {
+			eventChan <- sse.Event{Type: "Status", Data: "Got response from LLM 3"}
+			eventChan <- sse.Event{Type: "Message", Data: llm3Resp}
+		}
 		return
 	}
 	// Prepare prompts for LLM1 and LLM2
@@ -184,7 +209,32 @@ func (o *Orchestrator) ProcessMessage(ctx context.Context, userMessage string, e
 	llm1Resp := <-llm1RespChan
 	llm2Resp := <-llm2RespChan
 
-	// Send both responses as a single message event (with attribution)
-	combined := "LLM1 (short/formal):\n" + llm1Resp + "\n\nLLM2 (friendly/verbose):\n" + llm2Resp
-	eventChan <- sse.Event{Type: "Message", Data: combined}
+	// Use LLM3 to aggregate the two different style responses
+	eventChan <- sse.Event{Type: "Status", Data: "Invoking LLM 3 (aggregation)"}
+
+	aggregationPrompt := fmt.Sprintf(`You are an intelligent aggregator. Combine these two responses to the same question into one coherent, well-balanced answer:
+
+Formal Response (LLM1):
+%s
+
+Friendly Response (LLM2):
+%s
+
+Please create a unified response that:
+1. Combines the best insights from both responses
+2. Maintains a balanced tone (not too formal, not too casual)
+3. Eliminates redundancy while preserving all important information
+4. Is well-structured and easy to understand
+5. Provides a comprehensive answer that satisfies the user's question`, llm1Resp, llm2Resp)
+
+	llm3Resp, err := o.llm3Client.ChatCompletion(ctx, aggregationPrompt)
+	if err != nil {
+		eventChan <- sse.Event{Type: "Status", Data: "LLM3 aggregation failed"}
+		// Fallback to combined response
+		combined := "LLM1 (formal):\n" + llm1Resp + "\n\nLLM2 (friendly):\n" + llm2Resp
+		eventChan <- sse.Event{Type: "Message", Data: combined}
+	} else {
+		eventChan <- sse.Event{Type: "Status", Data: "Got response from LLM 3"}
+		eventChan <- sse.Event{Type: "Message", Data: llm3Resp}
+	}
 }
