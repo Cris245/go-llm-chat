@@ -187,3 +187,11 @@ scripts/
 Dockerfile           # Builds the Go binary for prod
 Docker-compose.yml   # Mongo + server services
 ```
+
+---
+
+## Next Steps
+- Ability to connect to actual GDS (Global Distribution System) and PSS (Passenger Service System) to get real flight information.
+- Hot reload for Docker development so each code change deploys new containers automatically.
+- Simple web UI to make the system more user-friendly and visually clear.
+- API rate monitor
