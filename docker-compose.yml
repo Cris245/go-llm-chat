@@ -1,0 +1,32 @@
+
+services:
+  # Our Go application service
+  app:
+    build: . # Tells Docker Compose to build the image from the Dockerfile in the current directory
+    ports:
+      - "8080:8080" # Maps port 8080 on your host machine to port 8080 in the container
+    environment:
+      # The API key is provided by your local environment or a .env file (never hard-code secrets!).
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MONGO_URI: mongodb://admin:password@mongo:27017
+    depends_on:
+      - mongo # Ensures the 'mongo' service starts before the 'app' service
+    restart: unless-stopped # Automatically restart the container if it stops, unless manually stopped
+
+  # MongoDB database service
+  mongo:
+    image: mongo:latest # Uses the latest official MongoDB Docker image
+    ports:
+      - "27017:27017" # Maps MongoDB's default port 27017 on your host to the container
+    volumes:
+      - mongo_data:/data/db # Persists MongoDB data to a named volume on your host, so data isn't lost when container stops
+    environment:
+      # Optional: MongoDB root user credentials for initial setup.
+      # For production, consider using Docker Secrets or a dedicated secret management solution.
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    restart: unless-stopped # Automatically restart the container if it stops, unless manually stopped
+
+# Define the named volume for MongoDB data persistence
+volumes:
+  mongo_data:
