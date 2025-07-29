@@ -5,7 +5,8 @@ This project demonstrates a multi-LLM orchestration system written in Go. It sho
 1. Orchestrate multiple LLMs (OpenAI GPT-4o-mini models) with different prompts.
 2. Stream answers to the caller using Server-Sent Events (SSE).
 3. Enrich answers with domain data (a MongoDB collection of fictional flight data).
-4. Run everything locally with **Docker Compose**
+4. Support **multilingual queries** (English and Spanish).
+5. Run everything locally with **Docker Compose**
 
 ---
 
@@ -45,6 +46,19 @@ When the user's question mentions *flights* (in English or Spanish) the orchestr
 5. Streams back the final aggregated response via SSE.
 
 For non-flight questions, LLM1/LLM2 are given the user's question with their respective style prompts, and **LLM3 combines** the formal and friendly perspectives into one balanced response.
+
+---
+
+## Multilingual Support
+
+The system supports queries in both **English** and **Spanish**:
+
+* **Flight queries** work in both languages (e.g., "flights to London" / "vuelos a Londres")
+* **General questions** are processed in the language they're asked
+* **City name variations** are automatically mapped (e.g., "Londres" → "London", "Madrid" → "Madrid")
+* **Airport codes** are supported (e.g., "JFK" → "New York", "MAD" → "Madrid")
+
+The LLMs maintain the original language in their responses, providing a seamless multilingual experience.
 
 ---
 
